@@ -1,0 +1,9 @@
+streamlit
+pymysql
+pandas
+requests
+python-dotenv
+duckduckgo-search
+openai
+beautifulsoup4
+tenacity
