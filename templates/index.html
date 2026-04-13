@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Lead Intelligence Engine</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', system-ui, sans-serif; }
+        
+        body { 
+            width: 100vw; height: 100vh; overflow: hidden; /* STRICT NO SCROLL */
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); 
+            display: flex; flex-direction: column; color: #334155;
+        }
+        
+        /* Navbar */
+        .navbar { 
+            height: 64px; background: rgba(255,255,255,0.95); 
+            border-bottom: 1px solid rgba(255,255,255,0.1); 
+            display: flex; align-items: center; justify-content: space-between; 
+            padding: 0 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); z-index: 10;
+            flex-shrink: 0;
+        }
+        .navbar-left { display: flex; align-items: center; gap: 16px; }
+        .logo-img { height: 36px; width: auto; }
+        .logo-placeholder { width: 36px; height: 36px; background: #6366f1; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 800; font-size: 18px; }
+        .logo-text { font-size: 18px; font-weight: 700; color: #1e293b; letter-spacing: -0.5px; }
+        .navbar-right { font-size: 13px; font-weight: 500; color: #64748b; }
+        
+        /* Layout */
+        .main { display: flex; width: 100%; height: calc(100vh - 96px); gap: 20px; padding: 20px; overflow: hidden; }
+        .panel { 
+            background: #ffffff; border-radius: 16px; padding: 20px; 
+            display: flex; flex-direction: column; gap: 12px; 
+            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.2); 
+            overflow: hidden; 
+        }
+        .left { width: 45%; }
+        .right { width: 55%; background: #f8fafc; border: 1px solid #e2e8f0; }
+        
+        /* Internal Scroll Wrapper for Left Panel */
+        .left-scrollable {
+            flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 6px;
+        }
+
+        /* Form Sections */
+        .section { display: flex; flex-direction: column; gap: 12px; background: #f8fafc; padding: 16px; border-radius: 12px; border: 1px solid #e2e8f0; }
+        .section-title { font-weight: 700; font-size: 11px; text-transform: uppercase; color: #6366f1; letter-spacing: 0.8px; }
+        
+        /* Collapsible Dropdowns (Accordions) */
+        details.accordion {
+            background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; transition: all 0.2s;
+        }
+        details.accordion[open] { border-color: #cbd5e1; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        summary.accordion-header {
+            font-weight: 700; font-size: 11px; text-transform: uppercase; color: #6366f1; letter-spacing: 0.8px;
+            padding: 16px; cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center;
+            user-select: none;
+        }
+        summary.accordion-header::-webkit-details-marker { display: none; }
+        summary.accordion-header::after { content: "▼"; font-size: 10px; color: #94a3b8; transition: transform 0.2s; }
+        details[open] summary.accordion-header::after { transform: rotate(180deg); color: #6366f1; }
+        .accordion-content { padding: 0 16px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+
+        /* Grids */
+        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+        
+        /* Inputs */
+        input[type="text"], input[type="number"], select { 
+            width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; 
+            border-radius: 8px; font-size: 13px; background: #ffffff; 
+            transition: all 0.2s ease; color: #1e293b;
+        }
+        input::placeholder { color: #94a3b8; }
+        input:focus, select:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15); }
+        
+        /* Custom Selects */
+        .searchable-select { position: relative; }
+        .searchable-select input { cursor: pointer; }
+        .dropdown-list { 
+            position: absolute; top: calc(100% + 4px); left: 0; right: 0; 
+            background: white; border: 1px solid #cbd5e1; border-radius: 8px; 
+            max-height: 160px; overflow-y: auto; z-index: 1000; display: none; 
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+        }
+        .dropdown-list.active { display: block; }
+        .search-input { width: calc(100% - 16px) !important; margin: 8px !important; }
+        .dropdown-item { padding: 8px 12px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #f1f5f9; }
+        .dropdown-item:hover { background: #e0e7ff; color: #4f46e5; font-weight: 500; }
+        .dropdown-item.hidden { display: none; }
+        
+        /* Radio Buttons & Checks */
+        .button-group { display: flex; gap: 8px; flex-wrap: wrap; }
+        .radio-btn { 
+            padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; 
+            background: white; cursor: pointer; font-size: 12px; font-weight: 600; 
+            color: #475569; flex: 1; text-align: center; transition: all 0.2s;
+        }
+        .radio-btn:hover { background: #f8fafc; }
+        .radio-btn.active { background: #6366f1; color: white; border-color: #6366f1; box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3); }
+        input[type="radio"], input[type="checkbox"] { display: none; }
+        
+        .checkbox-item label { 
+            padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; 
+            cursor: pointer; display: flex; align-items: center; justify-content: center; 
+            font-size: 12px; font-weight: 600; background: white; transition: all 0.2s; height: 100%;
+        }
+        .checkbox-item input[type="checkbox"]:checked + label { background: #10b981; color: white; border-color: #10b981; }
+
+        .signal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 8px; }
+        .signal-item { display: flex; flex-direction: column; gap: 8px; }
+        .signal-label { font-weight: 600; font-size: 11px; color: #64748b; }
+        
+        /* Main Action Button */
+        .btn-analyze { 
+            padding: 14px; background: #6366f1; color: white; border: none; 
+            border-radius: 10px; font-weight: 700; font-size: 14px; 
+            cursor: pointer; transition: all 0.3s; flex-shrink: 0;
+            box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.4); margin-top: 4px;
+        }
+        .btn-analyze:hover { background: #4f46e5; transform: translateY(-1px); }
+        
+        /* Right Panel UI */
+        .tabs { display: flex; gap: 16px; border-bottom: 1px solid #cbd5e1; margin-bottom: 16px; flex-shrink:0; }
+        .tab { 
+            padding: 10px 4px; background: transparent; border: none; 
+            cursor: pointer; font-weight: 600; color: #94a3b8; 
+            font-size: 13px; border-bottom: 2px solid transparent; transition: all 0.2s;
+        }
+        .tab:hover { color: #64748b; }
+        .tab.active { color: #6366f1; border-bottom-color: #6366f1; }
+        
+        .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; padding-right: 4px;}
+        .card { 
+            background: white; border-radius: 12px; padding: 16px; 
+            display: flex; flex-direction: column; gap: 10px; 
+            border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        
+        .table { width: 100%; border-collapse: collapse; font-size: 12px; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .table th { background: #f8fafc; color: #475569; padding: 12px; text-align: left; font-weight: 600; border-bottom: 1px solid #e2e8f0; } 
+        .table td { padding: 12px; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
+        
+        .spinner { width: 24px; height: 24px; border: 3px solid #e2e8f0; border-top-color: #6366f1; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 20px auto; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* Scrollbars */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* Footer */
+        .footer {
+            height: 32px; background: #0f172a; color: white; display: flex; align-items: center; 
+            justify-content: center; font-size: 11px; font-weight: 500; flex-shrink: 0; z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div class="navbar">
+        <div class="navbar-left">
+            {% if logo %}
+            <img src="data:image/png;base64,{{ logo }}" class="logo-img">
+            {% else %}
+            <div class="logo-placeholder">L</div>
+            {% endif %}
+            <div class="logo-text">Lead Intelligence Engine</div>
+        </div>
+        <div class="navbar-right">User: <b>Sales Team</b></div>
+    </div>
+
+    <div class="main">
+        <div class="panel left">
+            <div class="left-scrollable">
+                <div class="section">
+                    <div class="section-title">⚙️ Select AI Model</div>
+                    <div class="button-group">
+                        <input type="radio" id="m1" name="model" value="meta-llama/llama-3.1-8b-instruct" checked>
+                        <label for="m1" class="radio-btn active">Llama 3.1 8B</label>
+                        <input type="radio" id="m2" name="model" value="google/gemma-2-9b-it">
+                        <label for="m2" class="radio-btn">Gemma 2 9B</label>
+                        <input type="radio" id="m3" name="model" value="mistralai/mistral-nemo">
+                        <label for="m3" class="radio-btn">Mistral Nemo</label>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">🎯 1. Target Profile</div>
+                    <div class="row">
+                        <input type="text" id="company_name" placeholder="Company Name*">
+                        <input type="text" id="website" placeholder="Website*">
+                    </div>
+                    <div class="row">
+                        <input type="text" id="linkedin_url" placeholder="LinkedIn URL">
+                        <div class="searchable-select" id="country-select">
+                            <input type="text" id="country-input" placeholder="Country" readonly>
+                            <div class="dropdown-list">
+                                <input type="text" class="search-input" placeholder="Search...">
+                                <div class="dropdown-options">
+                                    {% for c in countries %}
+                                    <div class="dropdown-item" data-value="{{ c }}">{{ c }}</div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            <input type="hidden" id="country" value="">
+                        </div>
+                    </div>
+                    <div class="searchable-select" id="industry-select">
+                        <input type="text" id="industry-input" placeholder="Industry Domain" readonly>
+                        <div class="dropdown-list">
+                            <input type="text" class="search-input" placeholder="Search...">
+                            <div class="dropdown-options">
+                                <div class="dropdown-item" data-value="Banking & Financial Services">Banking & Finance</div>
+                                <div class="dropdown-item" data-value="Insurance">Insurance</div>
+                                <div class="dropdown-item" data-value="Healthcare & Pharma">Healthcare & Pharma</div>
+                                <div class="dropdown-item" data-value="Manufacturing & OT / ICS">Manufacturing</div>
+                                <div class="dropdown-item" data-value="Information Technology & SaaS">IT & SaaS</div>
+                                <div class="dropdown-item" data-value="Retail & E-Commerce">Retail & E-Commerce</div>
+                                <div class="dropdown-item" data-value="Logistics & Supply Chain">Logistics</div>
+                                <div class="dropdown-item" data-value="Government & Defence">Government</div>
+                                <div class="dropdown-item" data-value="Other">Other</div>
+                            </div>
+                        </div>
+                        <input type="hidden" id="company_domain" value="">
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">🛡️ 2. Service Scope</div>
+                    <div class="button-group">
+                        <input type="radio" id="s1" name="service_type" value="Web VAPT" checked><label for="s1" class="radio-btn active">Web VAPT</label>
+                        <input type="radio" id="s2" name="service_type" value="API VAPT"><label for="s2" class="radio-btn">API VAPT</label>
+                        <input type="radio" id="s3" name="service_type" value="Network VAPT"><label for="s3" class="radio-btn">Net VAPT</label>
+                    </div>
+                    <div class="row">
+                        <input type="number" id="scope_count" value="1" min="1" placeholder="IPs / Apps">
+                        <select id="complexity">
+                            <option value="Low">Complexity: Low</option>
+                            <option value="Medium" selected>Complexity: Medium</option>
+                            <option value="High">Complexity: High</option>
+                        </select>
+                    </div>
+                </div>
+
+                <details class="accordion">
+                    <summary class="accordion-header">🧠 3. Behavior Signals Options</summary>
+                    <div class="accordion-content">
+                        <div class="signal-grid">
+                            <div class="signal-item">
+                                <div class="signal-label">Lead Type</div>
+                                <div class="button-group">
+                                    <input type="radio" id="lt1" name="lead_type" value="New" checked><label for="lt1" class="radio-btn active">New</label>
+                                    <input type="radio" id="lt2" name="lead_type" value="Repeat"><label for="lt2" class="radio-btn">Repeat</label>
+                                    <input type="radio" id="lt3" name="lead_type" value="Referred"><label for="lt3" class="radio-btn">Referred</label>
+                                </div>
+                            </div>
+                            <div class="signal-item">
+                                <div class="signal-label">Requirement Clarity</div>
+                                <div class="button-group">
+                                    <input type="radio" id="cl1" name="clarity" value="Vague"><label for="cl1" class="radio-btn">Vague</label>
+                                    <input type="radio" id="cl2" name="clarity" value="Somewhat clear" checked><label for="cl2" class="radio-btn active">Somewhat clear</label>
+                                    <input type="radio" id="cl3" name="clarity" value="Clear"><label for="cl3" class="radio-btn">Clear</label>
+                                </div>
+                            </div>
+                            <div class="signal-item">
+                                <div class="signal-label">Buying Stage</div>
+                                <div class="button-group">
+                                    <input type="radio" id="bs1" name="buying_stage" value="Exploring"><label for="bs1" class="radio-btn">Exploring</label>
+                                    <input type="radio" id="bs2" name="buying_stage" value="Comparing"><label for="bs2" class="radio-btn">Comparing</label>
+                                    <input type="radio" id="bs3" name="buying_stage" value="Ready" checked><label for="bs3" class="radio-btn active">Ready</label>
+                                </div>
+                            </div>
+                            <div class="signal-item">
+                                <div class="signal-label">Price Sensitivity</div>
+                                <div class="button-group">
+                                    <input type="radio" id="ps1" name="price_sensitivity" value="Low"><label for="ps1" class="radio-btn">Low</label>
+                                    <input type="radio" id="ps2" name="price_sensitivity" value="Medium" checked><label for="ps2" class="radio-btn active">Med</label>
+                                    <input type="radio" id="ps3" name="price_sensitivity" value="High"><label for="ps3" class="radio-btn">High</label>
+                                </div>
+                            </div>
+                            <div class="signal-item">
+                                <div class="signal-label">Expected Timeline</div>
+                                <div class="button-group">
+                                    <input type="radio" id="tm1" name="timeline" value="Immediate"><label for="tm1" class="radio-btn">Immediate</label>
+                                    <input type="radio" id="tm2" name="timeline" value="Soon" checked><label for="tm2" class="radio-btn active">Soon</label>
+                                    <input type="radio" id="tm3" name="timeline" value="Not Defined"><label for="tm3" class="radio-btn">Not Defined</label>
+                                </div>
+                            </div>
+                            <div class="signal-item">
+                                <div class="signal-label">Competition</div>
+                                <div class="checkbox-item" style="height: 100%;">
+                                    <input type="checkbox" id="competitors">
+                                    <label for="competitors">Other Vendors Involved?</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="accordion">
+                    <summary class="accordion-header">💰 4. Pricing Rules & Overrides</summary>
+                    <div class="accordion-content">
+                        <div class="row-3">
+                            <div><span class="signal-label">Web Base</span><input type="number" id="web_rate" value="1500"></div>
+                            <div><span class="signal-label">API Base</span><input type="number" id="api_rate" value="1000"></div>
+                            <div><span class="signal-label">Net Base</span><input type="number" id="net_rate" value="800"></div>
+                        </div>
+                        <div class="row">
+                            <div><span class="signal-label">Min Quote</span><input type="number" id="min_value" value="2500"></div>
+                            <div><span class="signal-label">Ent. Multiplier</span><input type="number" id="ent_mult" value="1.5" step="0.1"></div>
+                        </div>
+                    </div>
+                </details>
+            </div>
+
+            <button class="btn-analyze" onclick="analyze()">Run Intelligence Sweep 🚀</button>
+        </div>
+
+        <div class="panel right">
+            <div class="tabs">
+                <button class="tab active" onclick="switchMainTab('dash', event)">🎯 Live Deal Desk</button>
+                <button class="tab" onclick="switchMainTab('hist', event)">📚 Intelligence History</button>
+            </div>
+            
+            <div id="dash" class="content">
+                <div style="flex:1; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 14px;">
+                    Configure profile and run sweep.
+                </div>
+            </div>
+            
+            <div id="hist" class="content" style="display: none; overflow-y:auto;">
+                <table class="table" id="history-table">
+                    <tr><th>Date</th><th>Company</th><th>Service</th><th>Decision</th><th>Quote</th></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">Copyright © 2026 : Valency Networks Private Limited.</div>
+
+    <script>
+        function initSearchableSelect(selectId, inputId, hiddenId) {
+            const container = document.getElementById(selectId);
+            const input = document.getElementById(inputId);
+            const hidden = document.getElementById(hiddenId);
+            const list = container.querySelector('.dropdown-list');
+            const search = container.querySelector('.search-input');
+            const items = container.querySelectorAll('.dropdown-item');
+
+            input.addEventListener('click', () => list.classList.toggle('active'));
+            search.addEventListener('input', (e) => {
+                const q = e.target.value.toLowerCase();
+                items.forEach(item => item.classList.toggle('hidden', !item.textContent.toLowerCase().includes(q)));
+            });
+            items.forEach(item => {
+                item.addEventListener('click', () => {
+                    input.value = item.getAttribute('data-value');
+                    hidden.value = item.getAttribute('data-value');
+                    list.classList.remove('active');
+                });
+            });
+            document.addEventListener('click', (e) => {
+                if (!container.contains(e.target)) list.classList.remove('active');
+            });
+        }
+
+        initSearchableSelect('country-select', 'country-input', 'country');
+        initSearchableSelect('industry-select', 'industry-input', 'company_domain');
+
+        document.querySelectorAll('input[type="radio"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                document.querySelectorAll(`input[name="${this.name}"]`).forEach(r => {
+                    const label = document.querySelector(`label[for="${r.id}"]`);
+                    if (label) label.classList.remove('active');
+                });
+                const activeLabel = document.querySelector(`label[for="${this.id}"]`);
+                if (activeLabel) activeLabel.classList.add('active');
+            });
+        });
+
+        function switchMainTab(t, event) {
+            document.getElementById('dash').style.display = t === 'dash' ? 'flex' : 'none';
+            document.getElementById('hist').style.display = t === 'hist' ? 'flex' : 'none';
+            document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+            if (t === 'hist') loadHistory();
+        }
+
+        window.switchReportTab = function(t, event) {
+            document.querySelectorAll('.rep-tab-content').forEach(c => c.style.display = 'none');
+            document.querySelectorAll('.rep-tab').forEach(b => b.classList.remove('active'));
+            document.getElementById(t).style.display = 'block';
+            event.target.classList.add('active');
+        }
+
+        async function analyze() {
+            const data = {
+                company_name: document.getElementById('company_name').value,
+                website: document.getElementById('website').value,
+                linkedin: document.getElementById('linkedin_url').value,
+                country: document.getElementById('country').value,
+                company_domain: document.getElementById('company_domain').value,
+                service: document.querySelector('input[name="service_type"]:checked')?.value,
+                scope: parseInt(document.getElementById('scope_count').value) || 1,
+                complexity: document.getElementById('complexity').value,
+                lead_type: document.querySelector('input[name="lead_type"]:checked')?.value,
+                clarity: document.querySelector('input[name="clarity"]:checked')?.value,
+                stage: document.querySelector('input[name="buying_stage"]:checked')?.value,
+                sensitivity: document.querySelector('input[name="price_sensitivity"]:checked')?.value,
+                timeline: document.querySelector('input[name="timeline"]:checked')?.value,
+                competitors: document.getElementById('competitors').checked ? "Yes" : "No",
+                model_id: document.querySelector('input[name="model"]:checked').value,
+                pricing_rules: {
+                    web: parseInt(document.getElementById('web_rate').value) || 1500,
+                    api: parseInt(document.getElementById('api_rate').value) || 1000,
+                    net: parseInt(document.getElementById('net_rate').value) || 800,
+                    min: parseInt(document.getElementById('min_value').value) || 2500,
+                    ent: parseFloat(document.getElementById('ent_mult').value) || 1.5 
+                }
+            };
+
+            if (!data.company_name || !data.website) {
+                alert('Company Name and Website are required.');
+                return;
+            }
+
+            document.getElementById('dash').innerHTML = '<div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#64748b;"><div class="spinner"></div><p>Scraping and analyzing footprint...</p></div>';
+
+            try {
+                const res = await fetch('/api/analyze', { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' }, 
+                    body: JSON.stringify(data) 
+                });
+                const result = await res.json();
+                
+                if (result.error) {
+                    document.getElementById('dash').innerHTML = `<div class="card" style="background: #fee2e2; border-color:#f87171;"><strong style="color: #991b1b;">❌ Error: ${result.error}</strong></div>`;
+                } else {
+                    displayResults(result, data);
+                }
+            } catch (e) {
+                document.getElementById('dash').innerHTML = `<div class="card" style="background: #fee2e2;"><strong style="color:#991b1b;">❌ Error: ${e.message}</strong></div>`;
+            }
+        }
+
+        function displayResults(response_obj, inputs) {
+            // response_obj contains { success: true, data: { lead_score: "...", pricing: {...}, previous_enquiry: {...} } }
+            const d = response_obj.data || {}; 
+            
+            console.log("Full AI Response Data:", d); // Helps with debugging in the browser
+
+            const p = d.pricing || {};
+            const prof = d.company_profile || {};
+            const disc = d.discount_strategy || {};
+
+            let ls = (d.lead_score || "Low").toUpperCase();
+            let cp = d.conversion_probability || "N/A";
+            
+            let bannerColor = ls === "HIGH" ? ["#dcfce7", "#22c55e", "#15803d", "🟢"] :
+                              ls === "MEDIUM" ? ["#fef9c3", "#eab308", "#a16207", "🟡"] :
+                              ["#fee2e2", "#ef4444", "#b91c1c", "🔴"];
+
+            // --- REPEAT LEAD BANNER LOGIC ---
+            let prevEnqUi = "";
+            if (d.previous_enquiry && d.previous_enquiry.time_ago) {
+                console.log("Repeat Lead Banner TRIGGERED!");
+                prevEnqUi = `
+                    <div style="background:#fffbeb; border:1px solid #fde047; padding:12px 16px; border-radius:8px; margin-bottom:12px; display:flex; align-items:center; gap:12px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); flex-shrink:0;">
+                        <div style="font-size:24px;">🔄</div>
+                        <div>
+                            <p style="margin:0; font-size:10px; font-weight:800; color:#b45309; text-transform:uppercase; letter-spacing:0.5px;">Repeat Lead Detected</p>
+                            <p style="margin:2px 0 0 0; font-size:12px; color:#78350f;">Previously enquired <b>${d.previous_enquiry.time_ago}</b>. Past Decision: <b>${d.previous_enquiry.decision}</b> (${d.previous_enquiry.suggested_price})</p>
+                        </div>
+                    </div>
+                `;
+            }
+
+            let statusUi = `
+                <div style="background:${bannerColor[0]}; border:2px solid ${bannerColor[1]}; color:${bannerColor[2]}; padding:12px 16px; border-radius:10px; font-weight:800; font-size:14px; display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-shrink:0;">
+                    <span>${bannerColor[3]} LEAD SCORE: ${ls}</span>
+                    <span style="background:${bannerColor[2]}; color:white; padding:4px 12px; border-radius:20px; font-size:12px;">Conversion Probability: ${cp}</span>
+                </div>
+            `;
+
+            let quoteUi = `
+                <div style="background:#1e293b; border-radius:8px; padding:10px 16px; display:flex; justify-content:space-between; align-items:center; color:white; margin-bottom:16px; flex-shrink:0;">
+                    <div style="font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Target Quote</div>
+                    <div style="font-size:24px; font-weight:800; letter-spacing:1px;">₹${(p.suggested_quote || 0).toLocaleString()}</div>
+                </div>
+            `;
+
+            function getMetric(lbl, val, inv) {
+                let v = String(val).toUpperCase();
+                let act = v==="HIGH"?3:v==="MEDIUM"?2:v==="LOW"?1:0;
+                let c = v==="HIGH"?(inv?"#dc2626":"#16a34a"):v==="MEDIUM"?"#eab308":v==="LOW"?(inv?"#16a34a":"#dc2626"):"#cbd5e1";
+                let blk = [1,2,3].map(i=>`<div style="flex:1;height:4px;background:${i<=act?c:'#e2e8f0'};border-radius:3px;"></div>`).join('');
+                return `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:9px 12px;margin-bottom:8px;">
+                    <p style="margin:0 0 4px 0;color:#64748b;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;">${lbl}</p>
+                    <div style="display:flex;gap:3px;margin-bottom:3px;">${blk}</div>
+                    <p style="margin:0;color:#0f172a;font-size:13px;font-weight:800;">${v}</p>
+                </div>`;
+            }
+
+            function oi(k, lbl, icn) {
+                let v = prof[k];
+                if(v===undefined) v="Unknown";
+                if(typeof v==="boolean") v=v?"Yes":"No";
+                let c = (String(v).toLowerCase()==="unknown"||String(v).toLowerCase()==="none")?"#94a3b8":"#0f172a";
+                return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f1f5f9;"><span style="color:#64748b;font-size:11px;font-weight:600;">${icn} ${lbl}</span><span style="color:${c};font-size:11px;font-weight:700;max-width:55%;text-align:right;">${v}</span></div>`;
+            }
+
+            let oiRows = oi("is_startup","Startup?","🚀") + oi("financial_status","Financial Status","💰") + oi("deduced_company_tier","Size Tier","🏢") + oi("estimated_headcount","Est. Headcount","👥") + oi("office_locations_count","Offices","📍") + oi("years_in_business","Years in Business","📅") + oi("leadership_experienced","Exp. Leadership?","🎯") + oi("customer_type","Customer Type","🤝");
+
+            let closing = Array.isArray(d.closing_strategy) ? d.closing_strategy.map(x=>`<li style="margin-bottom:6px;">${x}</li>`).join('') : `<li>${d.closing_strategy||'None'}</li>`;
+            
+            let flags = Array.isArray(d.red_flags) ? d.red_flags : [];
+            let flagsHtml = flags.length && flags[0].toLowerCase()!=="none" ? flags.map(f=>`<div style="background:#fee2e2;color:#991b1b;padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:8px;border:1px solid #f87171;font-weight:600;">🚨 ${f}</div>`).join('') : `<p style="font-size:12px;color:#64748b;">No major risks detected by AI.</p>`;
+
+            let insights = Array.isArray(d.background_insights) ? d.background_insights : [];
+            let insHtml = insights.length && insights[0].toLowerCase()!=="none" ? `<ul style="font-size:12px;padding-left:20px;margin:0;color:#0f172a;">`+insights.map(i=>`<li style="margin-bottom:6px;">${i}</li>`).join('')+`</ul>` : `<p style="font-size:12px;color:#64748b;">No recent digital footprint found.</p>`;
+
+            document.getElementById('dash').innerHTML = `
+                ${prevEnqUi}
+                ${statusUi}
+                ${quoteUi}
+                
+                <div class="tabs" style="margin-bottom:12px; flex-shrink:0;">
+                    <button class="tab rep-tab active" onclick="window.switchReportTab('rt1', event)">📊 Executive Summary</button>
+                    <button class="tab rep-tab" onclick="window.switchReportTab('rt2', event)">🎯 Execution Plan</button>
+                    <button class="tab rep-tab" onclick="window.switchReportTab('rt3', event)">⚠️ Risk & Intel</button>
+                </div>
+
+                <div id="rt1" class="rep-tab-content" style="flex:1; overflow-y:auto; padding-right:8px; display:block;">
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                        <div>
+                            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:8px;">
+                                <p style="margin:0 0 4px 0;font-size:10px;color:#64748b;font-weight:800;text-transform:uppercase;">🧠 Reasoning</p>
+                                <p style="margin:0;font-size:12px;color:#0f172a;line-height:1.45;">${d.reasoning_summary || 'No reasoning provided.'}</p>
+                            </div>
+                            ${getMetric("Deal Quality", d.deal_quality, false)}
+                            ${getMetric("Confidence", d.confidence, false)}
+                            ${getMetric("Effort Level", d.effort_level, true)}
+                        </div>
+                        <div>
+                            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;">
+                                <p style="margin:0 0 8px 0;font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;">🔬 Organisation Intelligence</p>
+                                ${oiRows}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="rt2" class="rep-tab-content" style="flex:1; overflow-y:auto; padding-right:8px; display:none;">
+                    <div class="card" style="background:#eff6ff; border-color:#bfdbfe; margin-bottom:12px;">
+                        <p style="margin:0 0 4px 0; font-size:10px; font-weight:800; color:#1e40af; text-transform:uppercase;">▶️ Immediate Next Action</p>
+                        <p style="margin:0; font-size:14px; font-weight:700; color:#1e3a8a;">${d.next_action || 'N/A'}</p>
+                    </div>
+                    <div class="card" style="margin-bottom:12px;">
+                        <p style="margin:0 0 8px 0; font-size:10px; font-weight:800; color:#64748b; text-transform:uppercase;">💰 Authorized Discounting</p>
+                        <p style="margin:0; font-size:13px; color:#0f172a;"><b>Level:</b> ${disc.level||'None'} (${disc.percentage||0}%)</p>
+                        <p style="margin:4px 0 0 0; font-size:12px; color:#475569; font-style:italic;">"${disc.guidance||'No guidance provided.'}"</p>
+                    </div>
+                    <div class="card">
+                        <p style="margin:0 0 8px 0; font-size:10px; font-weight:800; color:#64748b; text-transform:uppercase;">🗣️ Closing Narrative</p>
+                        <ul style="margin:0; padding-left:20px; font-size:13px; color:#0f172a;">${closing}</ul>
+                    </div>
+                </div>
+
+                <div id="rt3" class="rep-tab-content" style="flex:1; overflow-y:auto; padding-right:8px; display:none;">
+                    <div class="card" style="margin-bottom:12px;">
+                        <p style="margin:0 0 8px 0; color:#dc2626; font-weight:800; font-size:10px; text-transform:uppercase;">⚠️ Identified Deal Risks</p>
+                        ${flagsHtml}
+                    </div>
+                    <div class="card">
+                        <p style="margin:0 0 8px 0; color:#2563eb; font-weight:800; font-size:10px; text-transform:uppercase;">🌐 Web Scraped Insights</p>
+                        ${insHtml}
+                    </div>
+                </div>
+            `;
+        }
+
+        async function loadHistory() {
+            try {
+                const res = await fetch('/api/history');
+                const d = await res.json();
+                let html = '<tr><th>Date</th><th>Company</th><th>Service</th><th>Decision</th><th>Quote</th></tr>';
+                d.history.forEach(h => {
+                    const date = new Date(h.timestamp).toLocaleDateString(undefined, {month:'short', day:'numeric'});
+                    html += `<tr><td>${date}</td><td><strong>${h.company_name}</strong></td><td>${h.service_type}</td><td><span class="badge badge-medium">${h.decision}</span></td><td>₹${h.suggested_price.toLocaleString()}</td></tr>`;
+                });
+                document.getElementById('history-table').innerHTML = html;
+            } catch (e) {}
+        }
+    </script>
+</body>
+</html>
