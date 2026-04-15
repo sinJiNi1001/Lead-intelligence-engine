@@ -3,6 +3,7 @@ import os
 import json
 import re
 import time
+import traceback
 import requests
 import pymysql
 import base64
@@ -16,6 +17,14 @@ from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_exponential
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
+import logging
+
+# This creates a text file right next to app.py that records everything
+logging.basicConfig(
+    filename='DEBUG_LOG.txt', 
+    level=logging.INFO, 
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 load_dotenv()
 
@@ -39,7 +48,7 @@ def get_db_connection():
         database=os.getenv("DB_NAME", "lead_intel"),
         cursorclass=pymysql.cursors.DictCursor
     )
-
+#when was the previous enquuiry for this company and what was the decision and suggested price
 def check_previous_enquiry(company_name, website):
     try:
         conn = get_db_connection()
@@ -66,7 +75,7 @@ def check_previous_enquiry(company_name, website):
     except Exception as e:
         print(f"❌ [DATABASE] Error checking history: {e}")
         return None
-
+# Convert datetime to "X days ago" format
 def get_time_ago(dt_obj):
     if not dt_obj: return "in the past"
     
@@ -89,7 +98,7 @@ def get_time_ago(dt_obj):
     else:
         y = days // 365
         return f"{y} year{'s' if y > 1 else ''} ago"
-
+# Save the lead and AI decision to the database
 def save_lead(sales_person, company_name, website, service_type, input_json, output_json, decision, suggested_price):
     try:
         conn = get_db_connection()
@@ -104,7 +113,7 @@ def save_lead(sales_person, company_name, website, service_type, input_json, out
     except Exception as e:
         print(f"DB Error: {e}")
         return False
-
+# Fetch recent history for the dashboard (last 20 entries)
 def fetch_recent_history():
     try:
         conn = get_db_connection()
@@ -118,7 +127,7 @@ def fetch_recent_history():
     except Exception as e:
         print(f"❌ [DATABASE] Error fetching history: {e}")
         return []
-
+# Fetch list of countries for the dropdown (using restcountries API with fallback)
 def fetch_countries():
     try:
         response = requests.get("https://restcountries.com/v3.1/all?fields=name", timeout=5)
@@ -128,7 +137,7 @@ def fetch_countries():
     except:
         pass
     return ["United States", "United Kingdom", "India", "Australia", "Canada", "Germany", "France", "Other"]
-
+# Load the system prompt template from a text file
 def load_prompt_template():
     try:
         with open(os.path.join(os.path.dirname(__file__), "system_prompt.txt"), "r", encoding="utf-8") as f:
@@ -146,6 +155,8 @@ def get_image_base64(filename):
 # ==========================================
 # --- 1. MULTI-STAGE WEBSITE SCRAPER ---
 # ==========================================
+
+# This function attempts to scrape the company's website using BeautifulSoup first, and if it detects blocks or empty content, it falls back to using the Firecrawl API for a more robust extraction. It also includes checks for common anti-scraping blocks and returns a clean text snippet of the website's content.
 def scrape_company_website(url):
     if not url or url == "N/A": 
         return ""
@@ -206,6 +217,8 @@ def scrape_company_website(url):
 # ==========================================
 # --- 2. RUTHLESS SCRAPING ENGINE ---
 # ==========================================
+
+# This function constructs multiple search queries based on the company name, domain, and location to gather recent news and intelligence from search engines. It first tries to use the DDGS library for scraping DuckDuckGo results, and if that fails (due to rate limits or blocks), it falls back to using the Serper API for Google search results. The function then applies aggressive filtering to remove spammy or irrelevant results, ensuring that only high-quality intelligence is returned for AI analysis.
 def gather_background_intelligence(company_name, country_name="", website_url=""):
     if not company_name:
         return "No reliable recent news found."
@@ -312,6 +325,7 @@ def gather_background_intelligence(company_name, country_name="", website_url=""
 # ==========================================
 # --- AI ANALYSIS ---
 # ==========================================
+# This function is responsible for calling the OpenRouter API to execute the Llama/Gemma model. It includes a retry mechanism with exponential backoff to handle transient errors or rate limits. The function takes the constructed prompt and model ID as input and returns the AI's response, which will then be processed to extract the lead intelligence insights.
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=2, max=10), reraise=True)
 def call_openrouter(model_id, prompt_content):
     client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.getenv("OPENROUTER_API_KEY"))
@@ -319,7 +333,7 @@ def call_openrouter(model_id, prompt_content):
         model=model_id, messages=[{"role": "user", "content": prompt_content}],
         temperature=0.0, seed=42
     )
-
+# This function takes the input data from the user, the gathered background intelligence, and the specified model ID to construct a detailed prompt for the AI. It then calls the OpenRouter API to execute the model and processes the response to extract the lead intelligence insights. The function also includes error handling to manage cases where the AI returns invalid JSON or when required environment variables are missing.
 def analyze_lead(input_dict, background_text, model_id):
     if not os.getenv("OPENROUTER_API_KEY"): return {"error": "OPENROUTER_API_KEY missing from .env"}
     template = load_prompt_template()
@@ -330,18 +344,18 @@ def analyze_lead(input_dict, background_text, model_id):
         prompt = template.format(
             company_name=input_dict.get('company_name', 'N/A'),
             website=input_dict.get('website', 'N/A'),
-            linkedin=input_dict.get('linkedin', 'N/A'),
+            linkedin=input_dict.get('linkedin_url', 'N/A'),
             country=input_dict.get('country', 'N/A'),
-            company_domain=input_dict.get('company_domain', 'Not specified'),
-            service=input_dict.get('service', 'N/A'),
-            scope=input_dict.get('scope', 1),
+            company_domain=input_dict.get('industry', 'Not specified'),
+            service=input_dict.get('service_type', 'N/A'),
+            scope=input_dict.get('scope_count', 1),
             complexity=input_dict.get('complexity', 'N/A'),
             lead_type=input_dict.get('lead_type', 'N/A'),
             clarity=input_dict.get('clarity', 'N/A'),
-            stage=input_dict.get('stage', 'N/A'),
-            sensitivity=input_dict.get('sensitivity', 'N/A'),
+            stage=input_dict.get('buying_stage', 'N/A'),
+            sensitivity=input_dict.get('price_sensitivity', 'N/A'),
             timeline=input_dict.get('timeline', 'N/A'),
-            competitors=input_dict.get('competitors', 'N/A'),
+            competitors="Yes" if input_dict.get('competitors') else "No",
             pr_web=pr.get('web', 0), pr_api=pr.get('api', 0), pr_net=pr.get('net', 0),
             pr_min=pr.get('min', 0), pr_ent=pr.get('ent', 1.0),
             background_text=background_text
@@ -352,18 +366,18 @@ def analyze_lead(input_dict, background_text, model_id):
         start, end = raw.find('{'), raw.rfind('}')
         if start == -1 or end == -1: return {"error": "AI returned invalid JSON structure."}
         
-        clean = raw[start:end+1]
+        clean = raw[start:end+1] # type: ignore
         clean = re.sub(r',\s*}', '}', clean) # JSON Scrubber
         clean = re.sub(r',\s*]', ']', clean)
         return json.loads(clean)
     except Exception as e:
         return {"error": str(e)}
-
+# This function calculates the suggested pricing for the lead based on the input parameters and the AI's response. It uses predefined pricing rules and applies multipliers based on the service type, scope, complexity, and the deduced company tier from the AI analysis. The function ensures that the final suggested quote meets a minimum threshold and returns a structured response with the suggested quote, price range, and base rate.
 def calculate_pricing(input_dict, ai_response):
     pr = input_dict.get("pricing_rules", {})
     rates = {"Web VAPT": pr.get("web", 1500), "API VAPT": pr.get("api", 1000), "Network VAPT": pr.get("net", 800)}
-    base_rate = rates.get(input_dict.get("service", "Web VAPT"), 1500)
-    scope = input_dict.get("scope", 1)
+    base_rate = rates.get(input_dict.get("service_type", "Web VAPT"), 1500)
+    scope = input_dict.get("scope_count", 1)
     
     c_mult = {"Low": 1.0, "Medium": 1.2, "High": 1.5}
     calc = int(base_rate * scope * c_mult.get(input_dict.get("complexity", "Medium"), 1.2))
@@ -383,12 +397,38 @@ def calculate_pricing(input_dict, ai_response):
 def index():
     return render_template('index.html', countries=fetch_countries(), logo=get_image_base64("logo.png"))
 
-@app.route('/api/analyze', methods=['POST'])
+# API endpoint to analyze the lead and return AI insights along with pricing suggestions. It also checks for previous enquiries for the same company and includes that information in the response. The endpoint handles both the AI analysis and the database interactions to save the lead information and decision.
+@app.route('/api/process', methods=['POST'])
 def analyze():
+    data = request.get_json()
+
+    # 1. Define every exact key your backend expects to receive
+    expected_keys = [
+        'company_name', 'website', 'model', 'linkedin_url', 'country', 'industry',
+        'service_type', 'scope_count', 'complexity', 'lead_type', 'clarity',
+        'buying_stage', 'price_sensitivity', 'timeline', 'competitors',
+        'web_rate', 'api_rate', 'net_rate', 'min_value', 'ent_mult'
+    ]
+
+    # 2. Check the incoming data against the checklist
+    missing_keys = []
+    for key in expected_keys:
+        if key not in data:
+            missing_keys.append(key)
+
+    # 3. If anything is missing, tell the frontend EXACTLY what it is
+    if missing_keys:
+        error_msg = f"Missing required fields: {', '.join(missing_keys)}"
+        logging.error(f"Validation Failed. {error_msg}") # Good for your server logs
+        return jsonify({
+            'success': False,
+            'error': error_msg
+        }), 400
+
+        
+    logging.info("🚨 NEW REQUEST STARTED from frontend!")
     try:
-        data = request.json
-        if not data.get('company_name') or not data.get('website') or not data.get('service'):
-            return jsonify({"error": "Missing required fields"}), 400
+    
             
         # Check DB BEFORE we save the new one
         prev_enq = check_previous_enquiry(data['company_name'], data['website'])
@@ -416,7 +456,7 @@ def analyze():
         # REAL PIPELINE
         background_text = gather_background_intelligence(data['company_name'], data.get('country', ''), data['website'])
         print("\n🧠 Executing Llama/Gemma Model via OpenRouter...")
-        ai_response = analyze_lead(data, background_text, data.get('model_id', 'meta-llama/llama-3.1-8b-instruct'))
+        ai_response = analyze_lead(data, background_text, data.get('model', 'meta-llama/llama-3.1-8b-instruct'))
         
         if "error" in ai_response: 
             print(f"❌ AI Error: {ai_response['error']}")
@@ -427,15 +467,19 @@ def analyze():
         ai_response['pricing'] = pricing
         ai_response['previous_enquiry'] = prev_data
         
-        save_lead('Sales Team', data['company_name'], data['website'], data['service'], data, ai_response, 
+        save_lead('Sales Team', data['company_name'], data['website'], data['service_type'], data, ai_response, 
                  f"{str(ai_response.get('lead_score', 'Low')).capitalize()} ({str(ai_response.get('conversion_probability', 'N/A'))})", 
                  pricing.get('suggested_quote', 0))
+        logging.info("✅ REQUEST FINISHED SUCCESSFULLY! Sending JSON back.")
         
         return jsonify({"success": True, "data": ai_response})
     except Exception as e:
         print(f"❌ Server Error: {str(e)}")
+        
+        logging.error(f"❌ PYTHON CRASHED:\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
+# API endpoint to fetch recent history of leads for the dashboard. It retrieves the data from the database, formats the timestamps to a human-readable "time ago" format, and returns a structured JSON response that can be easily displayed on the frontend.
 @app.route('/api/history', methods=['GET'])
 def history():
     data = fetch_recent_history()
@@ -443,6 +487,7 @@ def history():
                                   "service_type": item['service_type'], "decision": item['decision'], 
                                   "suggested_price": item['suggested_price']} for item in data]})
 
+# API endpoint to fetch the list of countries for the dropdown in the lead input form. It uses the restcountries API to get an updated list of countries, and if that fails, it falls back to a hardcoded list of common countries. The endpoint returns a JSON response with the list of countries that can be used to populate the dropdown on the frontend.
 @app.route('/api/countries', methods=['GET'])
 def countries():
     return jsonify({"countries": fetch_countries()})
@@ -456,11 +501,11 @@ if __name__ == '__main__':
         print("⚠️  RUNNING IN DEV MODE  ⚠️")
         print("AI calls are bypassed. Auto-reload is ON.")
         print("="*50 + "\n")
-        app.run(debug=True, host='127.0.0.1', port=5000)
+        app.run(debug=True, host='127.0.0.1', port=5004)
     else:
         from waitress import serve
         print("\n" + "="*50)
         print("🚀 RUNNING IN PRODUCTION MODE (Waitress)")
-        print("Listening on http://127.0.0.1:5005")
+        print("Listening on http://127.0.0.1:5004")
         print("="*50 + "\n")
-        serve(app, host='127.0.0.1', port=5005)
+        serve(app, host='127.0.0.1', port=5004)
