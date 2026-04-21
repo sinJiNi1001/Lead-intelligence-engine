@@ -366,7 +366,7 @@ def analyze_lead(input_dict, background_text, model_id):
         start, end = raw.find('{'), raw.rfind('}')
         if start == -1 or end == -1: return {"error": "AI returned invalid JSON structure."}
         
-        clean = raw[start:end+1] # type: ignore
+        clean = raw[start:end+1]
         clean = re.sub(r',\s*}', '}', clean) # JSON Scrubber
         clean = re.sub(r',\s*]', ']', clean)
         return json.loads(clean)
@@ -457,6 +457,8 @@ def analyze():
         background_text = gather_background_intelligence(data['company_name'], data.get('country', ''), data['website'])
         print("\n🧠 Executing Llama/Gemma Model via OpenRouter...")
         ai_response = analyze_lead(data, background_text, data.get('model', 'meta-llama/llama-3.1-8b-instruct'))
+        ai_response = analyze_lead(data, background_text, data.get('model', 'mistralai/mistral-nemo'))
+        ai_response = analyze_lead(data, background_text, data.get('model', 'liquid/lfm-2-24b-a2b'))
         
         if "error" in ai_response: 
             print(f"❌ AI Error: {ai_response['error']}")
@@ -501,11 +503,12 @@ if __name__ == '__main__':
         print("⚠️  RUNNING IN DEV MODE  ⚠️")
         print("AI calls are bypassed. Auto-reload is ON.")
         print("="*50 + "\n")
-        app.run(debug=True, host='127.0.0.1', port=5004)
+        app.run(debug=True, host='127.0.0.1', port=5000)
     else:
         from waitress import serve
         print("\n" + "="*50)
         print("🚀 RUNNING IN PRODUCTION MODE (Waitress)")
         print("Listening on http://127.0.0.1:5004")
         print("="*50 + "\n")
-        serve(app, host='127.0.0.1', port=5004)
+        serve(app, host='127.0.0.1', port=5004, channel_timeout=120, threads=8)
+        print("🚀 Starting with channel_timeout=120")
