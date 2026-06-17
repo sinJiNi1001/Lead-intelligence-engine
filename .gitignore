@@ -1,5 +1,43 @@
+# =========================
+# API Keys & Secrets
+# =========================
 .env
+.env.local
+.env.*.local
+
+# =========================
+# Databases & Logs
+# =========================
+*.db
+*.sqlite3
+*DEBUG_LOG.txt
+
+# =========================
+# Python / FastAPI Backend
+# =========================
 __pycache__/
+*.py[cod]
+*$py.class
 venv/
-.streamlit/
-DEBUG_LOG.txt
+env/
+.pytest_cache/
+.coverage
+
+# =========================
+# Node / React Frontend
+# =========================
+node_modules/
+dist/
+dist-ssr/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.eslintcache
+
+# =========================
+# OS & Editor Files
+# =========================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

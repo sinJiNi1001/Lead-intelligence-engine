@@ -1,0 +1,6 @@
+BATCH PROCESSING INSTRUCTIONS:
+You are receiving an array of leads. Analyze EACH lead according to the standard criteria.
+You MUST return a JSON object with a 'results' array containing your analysis for each lead.
+Map each result back to the company 'id' provided.
+
+LEADS BATCH:
