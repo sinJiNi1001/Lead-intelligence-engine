@@ -12,7 +12,7 @@ from database import get_db_connection, init_db
 
 import requests
 from bs4 import BeautifulSoup
-from ddgs import DDGS # Updated import
+from ddgs import DDGS 
 from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -65,7 +65,7 @@ class PricingRules(BaseModel):
 class LeadRequest(BaseModel):
     company_name: str
     website: str
-    model: str = "meta-llama/llama-3.1-8b-instruct"
+    model: str = "openai/gpt-oss-20b"
     linkedin_url: str = "N/A"
     country: str = "N/A"
     industry: str = "N/A"
@@ -161,7 +161,7 @@ def save_lead(sales_person, company_name, website, service_type, input_dict, out
         logging.error(f"DB Error: {e}")
 
 # ==========================================
-# --- SCRAPING ENGINE ---
+# --- UPGRADED SCRAPING ENGINE ---
 # ==========================================
 def scrape_company_website(url):
     if not url or url == "N/A": return ""
@@ -169,19 +169,21 @@ def scrape_company_website(url):
     if not url.startswith("http"): url = "https://" + url
             
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        response = requests.get(url, headers=headers, timeout=7)
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+        response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'html.parser')
-            for script in soup(["script", "style"]): script.extract()
-            clean_text = soup.get_text(separator=' ', strip=True)[:1500] 
+            for script in soup(["script", "style", "nav", "footer", "header"]): script.extract()
+            
+            # Expanded to 5000 chars so the AI gets the meat of the pages
+            clean_text = soup.get_text(separator=' ', strip=True)[:5000] 
             
             if len(clean_text) > 100:
                 if "Just a moment" in clean_text or "Enable JavaScript" in clean_text or "cloudflare" in clean_text.lower():
                     raise Exception("Cloudflare CAPTCHA block detected.")
-                return f"COMPANY WEBSITE:\n{clean_text}\n\n"
+                return f"COMPANY WEBSITE TEXT EXTRACT:\n{clean_text}\n\n"
     except Exception as e:
-        logging.warning(f"BS4 Failed: {e}. Triggering Fallback...")
+        logging.warning(f"BS4 Website Scraping Failed: {e}. Triggering Fallback...")
 
     try:
         firecrawl_key = os.getenv("FIRECRAWL_API_KEY")
@@ -190,86 +192,81 @@ def scrape_company_website(url):
             payload = {"url": url, "formats": ["markdown"]}
             fc_response = requests.post("https://api.firecrawl.dev/v1/scrape", headers=headers, json=payload, timeout=15)
             if fc_response.status_code == 200:
-                clean_text = fc_response.json().get("data", {}).get("markdown", "")[:1500]
-                return f"COMPANY WEBSITE (FIRECRAWL EXTRACT):\n{clean_text}\n\n"
+                clean_text = fc_response.json().get("data", {}).get("markdown", "")[:5000]
+                return f"COMPANY WEBSITE (FIRECRAWL MARKDOWN):\n{clean_text}\n\n"
     except Exception as e:
         logging.error(f"Fallback Scraper Exception: {e}")
 
-    return "COMPANY WEBSITE: Could not access directly. Rely strictly on Search Engine Intel.\n\n"
+    return "COMPANY WEBSITE: Could not access directly due to anti-bot walls.\n\n"
 
 def gather_background_intelligence(company_name, country_name="", website_url=""):
-    if not company_name: return "No reliable recent news found."
+    if not company_name: return "No reliable recent data found."
     location = f" {country_name}" if country_name and country_name != "Other" else ""
     core_domain = website_url.replace("https://", "").replace("http://", "").replace("www.", "").split('/')[0]
     
+    # Consolidating from 6 queries down to 2 mega-queries to bypass 429 blocks
     queries = [
-        f'"{company_name}" "{core_domain}" funding OR investment OR valuation',
-        f'"{company_name}" "{core_domain}" breach OR lawsuit OR penalty',
-        f'"{company_name}" {location} founded incorporated -"{core_domain}"', 
-        f'"{company_name}" "{core_domain}" employees headcount',
-        f'who is the CEO or founder of "{company_name}" "{core_domain}"',
-        f'site:linkedin.com/company "{company_name}" {location}'
+        f'"{company_name}" "{core_domain}" headcount OR employees OR funding OR revenue',
+        f'"{company_name}" {location} corporate overview profile'
     ]
     
     raw_results = []
-    ddgs = DDGS()
-    for q in queries:
-        try:
-            res = ddgs.text(q, max_results=8) 
-            raw_results.extend(list(res) if res else [])
-        except Exception:
-            continue 
-        time.sleep(2)
-
+    
+    # Primary Strategy: Serper API
+    serper_key = os.getenv("SERPER_API_KEY")
+    if serper_key:
+        logging.info("[OSINT] Using Serper API for premium clean data fetch")
+        headers = {'X-API-KEY': serper_key, 'Content-Type': 'application/json'}
+        for q in queries:
+            try:
+                resp = requests.post("https://google.serper.dev/search", headers=headers, json={"q": q, "num": 5}, timeout=10)
+                if resp.status_code == 200:
+                    for item in resp.json().get("organic", []):
+                        raw_results.append({"title": item.get("title", ""), "href": item.get("link", ""), "body": item.get("snippet", "")})
+            except Exception as e:
+                logging.error(f"Serper request failed: {e}")
+    
+    # Fallback Strategy: Safe, staggered DDGS
     if not raw_results:
-        serper_key = os.getenv("SERPER_API_KEY")
-        if serper_key:
-            headers = {'X-API-KEY': serper_key, 'Content-Type': 'application/json'}
-            for q in [f'"{company_name}" "{core_domain}" business OR funding OR lawsuit']:
-                try:
-                    resp = requests.post("https://google.serper.dev/search", headers=headers, json={"q": q, "num": 8}, timeout=10)
-                    if resp.status_code == 200:
-                        for item in resp.json().get("organic", []):
-                            raw_results.append({"title": item.get("title", ""), "href": item.get("link", ""), "body": item.get("snippet", "")})
-                except Exception:
-                    pass
+        logging.info("[OSINT] Falling back to staggered DDG queries")
+        ddgs = DDGS()
+        for q in queries:
+            try:
+                res = ddgs.text(q, max_results=5) 
+                if res: raw_results.extend(list(res))
+            except Exception as e:
+                logging.warning(f"DDG throttled query '{q}': {e}")
+                continue 
+            time.sleep(3)
 
     clean_results = []
     seen_urls = set()
-    spam_domains = ['tiktok.com', 'reddit.com', 'facebook.com', 'instagram.com', 'twitter.com']
-    dead_words = ['latest news and live updates', 'read latest news']
-    name_parts = company_name.lower().split()
-    core_name = " ".join(name_parts[:2]) if len(name_parts) > 1 else name_parts[0]
+    spam_domains = ['tiktok.com', 'reddit.com', 'facebook.com', 'instagram.com', 'twitter.com', 'youtube.com']
+    
+    core_name = company_name.lower().split()[0]
     
     for r in raw_results:
-        title, url, snippet = r.get('title', ''), r.get('href', ''), r.get('body', '')
+        title, url, snippet = r.get('title', ''), r.get('href', '') or r.get('body', ''), r.get('body', '') or r.get('snippet', '')
         if url in seen_urls or any(domain in url.lower() for domain in spam_domains): continue
-        if any(dead in title.lower() for dead in dead_words): continue
         if core_name not in title.lower() and core_name not in snippet.lower(): continue
         
         seen_urls.add(url)
-        clean_results.append({"title": title, "snippet": snippet[:300]})
-        if len(clean_results) >= 35: break
+        clean_results.append(f"- Title: {title}\n  Context: {snippet}")
+        if len(clean_results) >= 10: break
 
-    ddg_text = "SEARCH ENGINE INTEL:\n" + "\n".join([f"- {r['title']}: {r['snippet']}" for r in clean_results]) if clean_results else "No recent news found."
+    ddg_text = "WEB SEARCH INTEL:\n" + "\n".join(clean_results) if clean_results else "No recent search engine news found."
+    
     return scrape_company_website(website_url) + ddg_text
 
 # ==========================================
 # --- AI & JSON SANITIZATION ---
 # ==========================================
 def sanitize_json(raw_str: str) -> dict:
-    """
-    Robust JSON parser that walks the string character-by-character to 
-    properly escape control characters (like \n, \r, \t) only when they
-    appear inside string values, preventing json.loads crashes.
-    """
-    # 1. Isolate the JSON block (handles both objects and arrays)
     start_obj = raw_str.find('{')
     end_obj = raw_str.rfind('}')
     start_arr = raw_str.find('[')
     end_arr = raw_str.rfind(']')
 
-    # Determine if it's primarily an object or array
     if start_obj != -1 and end_obj != -1 and (start_arr == -1 or start_obj < start_arr):
         start, end = start_obj, end_obj
     elif start_arr != -1 and end_arr != -1:
@@ -279,7 +276,6 @@ def sanitize_json(raw_str: str) -> dict:
 
     json_str = raw_str[start:end+1]
     
-    # 2. Walk the string to escape raw control characters inside strings
     sanitized = []
     in_string = False
     escape_next = False
@@ -302,7 +298,6 @@ def sanitize_json(raw_str: str) -> dict:
             elif char == '\t':
                 sanitized.append('\\t')
             elif ord(char) < 32:
-                # Escape any other raw unprintable control characters
                 sanitized.append(f"\\u{ord(char):04x}")
             else:
                 sanitized.append(char)
@@ -312,23 +307,24 @@ def sanitize_json(raw_str: str) -> dict:
             sanitized.append(char)
             
     clean_str = "".join(sanitized)
-    
-    # 3. Handle common trailing comma errors as a final safety net
     clean_str = re.sub(r',\s*}', '}', clean_str)
     clean_str = re.sub(r',\s*]', ']', clean_str)
     
     return json.loads(clean_str)
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=2, max=10), reraise=True)
-def call_openrouter(model_id, prompt_content):
-    client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.getenv("OPENROUTER_API_KEY"))
+def call_groq(model_id, prompt_content):
+    client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=os.getenv("GROQ_API_KEY"))
     return client.chat.completions.create(
-        model=model_id, messages=[{"role": "user", "content": prompt_content}],
-        temperature=0.0, seed=42
+        model=model_id, 
+        messages=[{"role": "user", "content": prompt_content}],
+        temperature=0.0,
+        max_tokens=4096, 
+        response_format={"type": "json_object"}
     )
 
 def analyze_lead(input_dict, background_text, model_id) -> Dict[str, Any]:
-    if not os.getenv("OPENROUTER_API_KEY"): return {"error": "OPENROUTER_API_KEY missing from .env"}
+    if not os.getenv("GROQ_API_KEY"): return {"error": "GROQ_API_KEY missing from .env"}
     template = load_text_file("system_prompt.txt")
     if not template: return {"error": "Missing system_prompt.txt file"}
     
@@ -357,20 +353,36 @@ def analyze_lead(input_dict, background_text, model_id) -> Dict[str, Any]:
             background_text=background_text,
         )
 
-        response = call_openrouter(model_id, prompt)
+        response = call_groq(model_id, prompt)
+        
+        # === TOKEN TRACKING FOR GROQ ===
+        tot_tok = 0
+        if hasattr(response, 'usage') and response.usage:
+            in_tok = response.usage.prompt_tokens
+            out_tok = response.usage.completion_tokens
+            tot_tok = response.usage.total_tokens
+            
+            print(f"\n🪙 [TOKEN METRICS] For {input_dict.get('company_name')}:")
+            print(f"   ↳ Input / Prompt:     {in_tok} tokens")
+            print(f"   ↳ Output / Response:  {out_tok} tokens")
+            print(f"   ↳ Total Sweep Burned: {tot_tok} tokens\n")
+            logging.info(f"🪙 Token Usage - In: {in_tok}, Out: {out_tok}, Total: {tot_tok}")
+        # ===============================
+        
         raw = response.choices[0].message.content
 
         if not raw:
             return {"error": "AI returned an empty response."}
             
-        # Use our new robust sanitizer
-        return sanitize_json(raw)
+        parsed_json = sanitize_json(raw)
+        parsed_json['_tokens'] = tot_tok # <--- INJECT TOKENS HERE
+        return parsed_json
         
     except Exception as e:
         return {"error": str(e)}
 
 def analyze_lead_batch(leads_data: list, model_id: str) -> Dict[str, Any]:
-    if not os.getenv("OPENROUTER_API_KEY"): return {"error": "OPENROUTER_API_KEY missing from .env"}
+    if not os.getenv("GROQ_API_KEY"): return {"error": "GROQ_API_KEY missing from .env"}
     
     system_prompt = load_text_file("system_prompt.txt")
     batch_prompt = load_text_file("batch_prompt.txt")
@@ -384,20 +396,42 @@ def analyze_lead_batch(leads_data: list, model_id: str) -> Dict[str, Any]:
         batch_payload.append({
             "id": i,
             "data": {k: v for k, v in req.items() if v and k not in ['pricing_rules', 'model']},
-            "intel": data['background_text'][:1000]
+            "intel": data['background_text'][:2000]
         })
         
     try:
         prompt = f"{system_prompt}\n\n{batch_prompt}\n{json.dumps(batch_payload, separators=(',', ':'))}"
         
-        response = call_openrouter(model_id, prompt)
+        response = call_groq(model_id, prompt)
+        
+        # === TOKEN TRACKING FOR BATCH ===
+        tot_tok = 0
+        if hasattr(response, 'usage') and response.usage:
+            in_tok = response.usage.prompt_tokens
+            out_tok = response.usage.completion_tokens
+            tot_tok = response.usage.total_tokens
+            
+            print(f"\n📦 🪙 [BATCH TOKEN METRICS]:")
+            print(f"   ↳ Input / Prompt:     {in_tok} tokens")
+            print(f"   ↳ Output / Response:  {out_tok} tokens")
+            print(f"   ↳ Total Batch Burned: {tot_tok} tokens\n")
+            logging.info(f"🪙 Batch Token Usage - In: {in_tok}, Out: {out_tok}, Total: {tot_tok}")
+        # ================================
+        
         raw = response.choices[0].message.content
         
         if not raw:
             return {"error": "AI returned an empty response."}
             
-        # Use our new robust sanitizer
-        return sanitize_json(raw)
+        parsed_json = sanitize_json(raw)
+        
+        # Inject batch tokens evenly if there is a 'results' array
+        if 'results' in parsed_json and len(parsed_json['results']) > 0:
+            avg_tok = tot_tok // len(parsed_json['results'])
+            for r in parsed_json['results']:
+                r['_tokens'] = avg_tok
+        
+        return parsed_json
         
     except Exception as e:
         return {"error": str(e)}
@@ -449,7 +483,7 @@ def history():
 async def analyze(data: LeadRequest):
     logging.info("🚨 NEW REQUEST STARTED")
     try:
-        req_dict = data.model_dump() # Updated to model_dump()
+        req_dict = data.model_dump() 
         
         prev_enq = check_previous_enquiry(data.company_name, data.website)
         prev_data = None
@@ -493,7 +527,6 @@ async def analyze(data: LeadRequest):
 
 @app.post('/api/log')
 def save_frontend_log(log_data: FrontendLog):
-    """Receives logs from the React frontend and writes them to the frontend file"""
     if log_data.level == 'error':
         frontend_logger.error(log_data.message)
     elif log_data.level == 'warn':
@@ -520,7 +553,7 @@ async def process_batch(batch: BatchLeadRequest):
                 lead.country, 
                 lead.website
             )
-            return {"req_dict": lead.model_dump(), "background_text": bg_text} # Updated to model_dump()
+            return {"req_dict": lead.model_dump(), "background_text": bg_text} 
 
         leads_data = await asyncio.gather(*(scrape_lead(lead) for lead in batch.leads))
         

@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { fetchCountries, fetchHistory, analyzeLead, sendLogToServer } from './api';
 import toast, { Toaster } from 'react-hot-toast';
 
-// A helper component to match your custom Searchable Dropdowns perfectly
 function SearchableSelect({ placeholder, options, value, onChange }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -38,7 +37,6 @@ function SearchableSelect({ placeholder, options, value, onChange }) {
 }
 
 export default function App() {
-  // State from your original JS logic
   const [activeTab, setActiveTab] = useState('dash');
   const [loading, setLoading] = useState(false);
   const [debugLog, setDebugLog] = useState("");
@@ -49,9 +47,8 @@ export default function App() {
   const [aiResult, setAiResult] = useState(null);
   const [resultMeta, setResultMeta] = useState({ companyName: '', website: '' });
 
-  // Your exact form inputs
   const [formData, setFormData] = useState({
-    model: 'meta-llama/llama-3.3-70b-instruct',
+    model: 'openai/gpt-oss-20b',
     company_name: '', website: '', linkedin_url: '', country: '', industry: '',
     service_type: 'Web VAPT', scope_count: 1, complexity: 'Medium',
     lead_type: 'New', clarity: 'Somewhat clear', buying_stage: 'Ready',
@@ -94,7 +91,7 @@ export default function App() {
 
   const appendDebug = (msg, level = 'info') => {
     setDebugLog(prev => prev + `\n${msg}`);
-    sendLogToServer(level, msg); // Streams the log to the backend file
+    sendLogToServer(level, msg); 
   };
 
   const handleAnalyze = async () => {
@@ -106,7 +103,6 @@ export default function App() {
     setAiResult(null);
     setResultMeta({ companyName: formData.company_name, website: formData.website });
     
-    // Log the start of the request
     appendDebug(`📡 Sending payload for: ${formData.company_name} | Target: ${formData.website}`, 'info');
 
     try {
@@ -128,14 +124,12 @@ export default function App() {
     }
   };
 
-  // Render Helpers matching your JS template strings exactly
   const scoreColor = (s) => { const u = (s || '').toUpperCase(); return u.startsWith('HIGH') ? '#10b981' : u.startsWith('MEDIUM') ? '#f59e0b' : '#ef4444'; };
   const scoreBg = (s) => { const u = (s || '').toUpperCase(); return u.startsWith('HIGH') ? '#f0fdf4' : u.startsWith('MEDIUM') ? '#fffbeb' : '#fef2f2'; };
   const scoreBorder = (s) => { const u = (s || '').toUpperCase(); return u.startsWith('HIGH') ? '#bbf7d0' : u.startsWith('MEDIUM') ? '#fde68a' : '#fecaca'; };
   const boolLabel = (v) => v === true ? '✅ Yes' : v === false ? '❌ No' : '—';
   const unkStyle = (v) => (v === 'Unknown' || v === null || v === undefined) ? { color: '#94a3b8' } : { color: '#1e293b', fontWeight: '600' };
 
-  // Reusable Radio button
   const RadioBtn = ({ name, value, label }) => (
     <>
       <input type="radio" id={`${name}_${value}`} name={name} value={value} onChange={handleChange} checked={formData[name] === value} />
@@ -147,7 +141,6 @@ export default function App() {
     <>
       <div className="navbar">
         <div className="navbar-left">
-          {/* Replaced the 'L' placeholder with your actual logo */}
           <img src="/logo.png" alt="Company Logo" className="logo-img" />
           <div className="logo-text">⚡ Lead Intelligence Engine</div>
         </div>
@@ -155,21 +148,17 @@ export default function App() {
       </div>
 
       <div className="main">
-        {/* LEFT PANEL */}
         <div className="panel left">
           <div className="left-scrollable">
 
-            {/* AI Model */}
             <div className="section">
               <div className="section-title">⚙️ AI Model</div>
               <div className="button-group">
-                <RadioBtn name="model" value="meta-llama/llama-3.3-70b-instruct" label="Llama 3.3 70B" />
-                <RadioBtn name="model" value="mistralai/mistral-nemo" label="Mistral Nemo" />
-                <RadioBtn name="model" value="liquid/lfm-2-24b-a2b" label="LFM 2 24B" />
+                <RadioBtn name="model" value="openai/gpt-oss-20b" label="GPT-OSS 20B" />
+                <RadioBtn name="model" value="llama-3.3-70b-versatile" label="Llama 3.3 70B" />
               </div>
             </div>
 
-            {/* Target Profile */}
             <div className="section">
               <div className="section-title">🎯 1. Target Profile</div>
               <div className="row">
@@ -204,7 +193,6 @@ export default function App() {
               />
             </div>
 
-            {/* Service Scope */}
             <div className="section">
               <div className="section-title">🛡️ 2. Service Scope</div>
               <div className="button-group">
@@ -222,7 +210,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Behavioral Signals */}
             <details className="accordion">
               <summary className="accordion-header">🧠 3. Behavioral Signals</summary>
               <div className="accordion-content">
@@ -278,7 +265,6 @@ export default function App() {
               </div>
             </details>
 
-            {/* Pricing Rules */}
             <details className="accordion">
               <summary className="accordion-header">💰 4. Pricing Rules & Overrides</summary>
               <div className="accordion-content">
@@ -306,7 +292,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* RIGHT PANEL */}
         <div className="panel right">
           <div className="tabs">
             <button className={`tab ${activeTab === 'dash' ? 'active' : ''}`} onClick={() => handleTabSwitch('dash')}>🎯 Live Deal Desk</button>
@@ -352,7 +337,14 @@ export default function App() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
                     <div>
                       <div style={{ fontSize: '18px', fontWeight: '800', color: '#1e293b' }}>{resultMeta.companyName}</div>
-                      {resultMeta.website && <a href={resultMeta.website.startsWith('http') ? resultMeta.website : 'https://' + resultMeta.website} target="_blank" rel="noreferrer" style={{ color: '#6366f1', fontSize: '11px', fontWeight: '600', textDecoration: 'none' }}>Visit Website ↗</a>}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '2px' }}>
+                        {resultMeta.website && <a href={resultMeta.website.startsWith('http') ? resultMeta.website : 'https://' + resultMeta.website} target="_blank" rel="noreferrer" style={{ color: '#6366f1', fontSize: '11px', fontWeight: '600', textDecoration: 'none' }}>Visit Website ↗</a>}
+                        {aiResult._tokens > 0 && (
+                          <span style={{ fontSize: '10px', color: '#64748b', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontWeight: '600' }}>
+                            🪙 {aiResult._tokens.toLocaleString()} tokens used in this sweep
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div style={{ background: scoreBg(aiResult.lead_score), border: `1px solid ${scoreBorder(aiResult.lead_score)}`, borderRadius: '10px', padding: '10px 18px', textAlign: 'center' }}>
                       <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px' }}>Lead Score</div>
